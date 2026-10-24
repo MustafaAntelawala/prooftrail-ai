@@ -1,147 +1,145 @@
-# ProofTrail AI
+ProofTrail AI
+A reproducible benchmark for testing security-event correlation when
+evidence is incomplete, inconsistent, or corrupted.
+Project status: The current version is a rule-based prototype with
+a Streamlit dashboard and a synthetic benchmark. Local LLM review
+using Ollama and Qwen3:4B is a proposed next step; it is not yet
+implemented in the current codebase.
 
-**A reproducible robustness benchmark for security-event correlation under controlled evidence corruption.**
+Why this project?
+Security teams correlate events from endpoints, identity systems,
+firewalls, and other telemetry sources. Logs can be missing, timestamps
+can be uncertain, host identifiers can conflict, and an event occurring
+after another event does not automatically prove causation.
 
-ProofTrail AI is an early-stage open-source research prototype. It creates synthetic Windows/SOC event timelines, applies controlled mutations, and evaluates whether a deterministic verifier identifies inconsistent, incomplete, or ambiguous event relationships.
+ProofTrail AI explores this question: Can a system justify a
+security-event correlation claim using only the evidence available---and
+abstain when evidence is insufficient?
 
-> **Scope note:** This project does not claim global novelty, production readiness, or forensic proof. Its initial contribution is a narrow, reproducible benchmark focused on controlled telemetry mutations. Prior-art review is documented in `PRIOR_ART.md`.
-
-## MVP Features
-
-- Synthetic security-event scenarios with explicit expected verdicts.
-- Controlled mutations, including host swaps, timestamp changes, missing events, duplicate events, and contradictory records.
-- A deterministic baseline verifier with three verdicts: `supported`, `contradicted`, and `unknown`.
-- Explicit handling of clock uncertainty and conflicting event IDs.
-- Automated unit tests and stress tests.
-- Benchmark analytics by verdict and mutation category.
-- Interactive Streamlit dashboard with filters and scenario-level explanations.
-- JSON report export.
-- An extension point for comparing an open-weight language model in future work.
-
-## Requirements
-
-- Python 3.10 or later, subject to dependency compatibility.
-- Windows 10/11, macOS, or Linux.
-- Dependencies listed in `requirements.txt`.
-- No external model or API required for the deterministic benchmark.
-
-## Installation on Windows
-
-Open PowerShell in the project root:
-
-```powershell
-py -m venv .venv
+It is a research prototype, not a replacement for a SIEM, EDR, or
+analyst.
+Current features
+- Nine synthetic benchmark scenarios.
+- Rule-based claim verification with supported, contradicted, and
+  unknown verdicts.
+- Controlled mutations: host changes, timestamp skew, missing source
+  events, duplicate/conflicting IDs, reversed time, and unsupported
+  causal claims.
+- Evaluation metrics including accuracy/agreement with expected
+  labels, supported precision/recall, false-acceptance and
+  false-rejection counts, and a confusion matrix.
+- Streamlit dashboard with summary metrics, verdict distribution,
+  mutation summaries, filters, case details, and JSON report download.
+- Canonical JSON reporting with reproducibility metadata and SHA-256
+  hashing.
+- Pytest suite. The last recorded local run passed 26 tests; rerun the
+  suite to verify your current checkout.
+Architecture
+Synthetic scenarios
+       |
+       v
+prooftrail/verifier.py  -> verdict, reason, evidence event IDs
+       |
+       v
+prooftrail/evaluate.py  -> metrics and confusion matrix
+       |
+       v
+prooftrail/cli.py       -> canonical JSON report
+       |
+       v
+app.py                  -> Streamlit dashboard and report download
+Key files: - prooftrail/models.py --- event, claim, and scenario data
+models. - prooftrail/mutations.py --- benchmark scenario construction
+and mutations. - prooftrail/verifier.py --- deterministic, rule-based
+verification. - prooftrail/evaluate.py --- benchmark metrics. -
+prooftrail/cli.py --- report generation. - app.py --- dashboard. -
+tests/ --- automated tests. - docs/benchmark-spec.md --- benchmark
+rules and limitations.
+Run locally on Windows
+python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-```
-
-If PowerShell blocks virtual-environment activation, invoke the environment's Python directly:
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
-
-Use a standard Python build compatible with the packages in `requirements.txt`. If a dependency has no compatible prebuilt wheel for your Python build, consult its installation documentation rather than attempting an unsupported source build.
-
-## Run the Benchmark
-
-Generate the baseline JSON report:
-
-```powershell
+pip install -r requirements.txt
+Run tests:
+python -m pytest -q
+Generate a report (create results first if needed):
+New-Item -ItemType Directory -Force results
 python -m prooftrail.cli --output results\baseline.json
-```
-
-The output directory and report are generated by the CLI as implemented in the project.
-
-## Run the Dashboard
-
-Start the interactive dashboard from the project root:
-
-```powershell
+Launch the dashboard:
 python -m streamlit run app.py
-```
-
-Open the local URL printed by Streamlit, normally:
-
-`http://localhost:8501`
-
-The dashboard provides:
-
-- Total scenario count and expected-versus-actual agreement.
-- Actual verdict distribution.
-- Expected-versus-actual comparison.
-- Results grouped by mutation category.
-- Filters for verdict, mutation, and agreement.
-- Individual scenario details, verifier reasons, evidence IDs, and a scenario SHA-256 fingerprint.
-- A downloadable JSON benchmark report.
-
-The dashboard's JSON export is separate from the CLI output unless explicitly connected in code.
-
-## Run the Tests
-
-Run the full test suite:
-
-```powershell
-python -m pytest -v
-```
-
-The test suite includes explicit expected-outcome cases and stress tests involving timestamp and clock-uncertainty combinations.
-
-Tests passing means the implementation satisfies the tested expectations. It does not independently prove that every rule is correct for real-world incident investigation.
-
-## How the Baseline Works
-
-The deterministic verifier checks a limited set of explicit invariants, including:
-
-- Whether referenced events exist.
-- Whether event IDs refer to conflicting records.
-- Whether the claimed host matches the referenced events.
-- Whether event ordering is consistent with timestamps and configured clock uncertainty.
-- Whether the observed time gap fits the configured window.
-- Whether the requested relationship is one the baseline supports.
-
-The verifier returns:
-
-- **`supported`** — the configured host and time-window checks passed.
-- **`contradicted`** — the available evidence violates a checked invariant.
-- **`unknown`** — evidence is missing, conflicting, ambiguous, or outside the verifier's supported relationship types.
-
-**Important:** `supported` means that the implemented checks passed. It does not establish causality, prove an attack occurred, or establish forensic authenticity.
-
-## Benchmark and Metrics
-
-The starter benchmark currently contains nine synthetic scenarios covering baseline behavior and selected evidence mutations.
-
-The dashboard compares actual verdicts with explicitly configured expected verdicts. The current `9/9` agreement indicates that all nine cases match their configured labels.
-
-This small benchmark is a development baseline, not a statistically representative dataset. Do not interpret its agreement rate as real-world SOC accuracy or production readiness. The stress-test oracle also shares assumptions with the verifier's temporal policy, so passing those tests demonstrates consistency with that policy rather than independent validation of the policy itself.
-
-Before publishing new results, record the code version, scenario definitions, test command, and exported report. Expand the dataset and independently review expected outcomes before drawing broader conclusions.
-
-## Output
-
-The CLI produces a JSON report according to its implementation. The dashboard provides a separate downloadable JSON report containing the scenarios, verifier results, summary counts, and scenario hashes.
-
-The dashboard's SHA-256 value fingerprints the serialized scenario. It does not prove evidence authenticity or integrity unless compared against a trusted reference in a defined integrity process.
-
-## Roadmap
-
-1. Expand the mutation catalog and add independently reviewed expected-outcome tests.
-2. Add schema validation and deterministic event normalization.
-3. Improve reproducibility metadata and benchmark documentation.
-4. Validate against a separately curated, sanitized dataset.
-5. Add a pluggable open-weight model adapter, such as Ollama, and compare model outputs with the deterministic baseline.
-6. Publish a documented prior-art comparison and methodology.
-
-## Security and Privacy
-
-- Use synthetic or appropriately sanitized data only.
-- Do not commit confidential logs, credentials, personal data, or production bank telemetry.
-- Do not send sensitive logs to external model services.
-- Review all generated reports before publishing them.
-- Do not treat benchmark outputs as incident-response decisions without human review.
-
-## License
-
-MIT. See `LICENSE`.
+Planned open-source AI integration
+The next planned capability is an optional local LLM review using:
+- Ollama to serve a model locally.
+- qwen3:4b as an initial model to evaluate on a computer with 16 GB
+  RAM.
+- A proposed dashboard panel that shows the deterministic verifier's
+  verdict beside an AI-generated assessment.
+Proposed workflow
+Scenario + claim + supplied evidence
+          |                         |
+          v                         v
+Rule-based verifier          Local LLM reviewer
+          |                         |
+          v                         v
+Deterministic verdict        Structured AI assessment
+          \                         /
+           \                       /
+            v                     v
+             Comparison and review panel
+The LLM should receive only the scenario fields needed for review. Its
+response is advisory, not ground truth. The rule-based verifier remains
+the baseline and should work when Ollama is unavailable.
+Prepare a local model (optional)
+Install Ollama from its official Windows download
+page, then run:
+ollama --version
+ollama run qwen3:4b
+The first run downloads the model. Speed and memory usage depend on
+CPU/GPU and quantization. These commands test the model locally; they
+do not integrate it into the ProofTrail dashboard. Verify the exact
+model artifact and license before redistribution.
+Planned safeguards
+- Keep AI review optional; the benchmark must work without Ollama.
+- Label AI output separately from expected benchmark labels.
+- Ask the model to cite supplied event IDs and state when evidence is
+  insufficient.
+- Do not allow the model to invent logs, users, timestamps, or causal
+  relationships.
+- Validate responses against a schema; handle timeouts and malformed
+  responses.
+- Record model/version/settings for reproducibility.
+- Evaluate disagreements, unsupported claims, false
+  acceptance/rejection, and abstention behavior on the same scenarios.
+- Do not send real or sensitive security logs to an external service.
+  Local inference reduces data sharing, but local access controls
+  still matter.
+Benchmark interpretation and limitations
+- The current benchmark uses nine synthetic scenarios; it does not
+  establish real-world SOC accuracy.
+- Expected verdicts are labels defined by the benchmark
+  scenario/specification. Their rationale should be independently
+  reviewed.
+- A 100% match on these cases means agreement on a small test
+  set---not production readiness.
+- supported means the defined checks pass; it does not prove event
+  authenticity or causation.
+- unknown is an intentional outcome when evidence is insufficient or
+  ambiguous.
+- The current verifier is deterministic and rule-based. The planned
+  LLM integration is not implemented by this README update.
+Roadmap
+1. Independently review expected labels and document the rationale for
+   every scenario.
+2. Add an optional Ollama client module with timeouts, error handling,
+   and structured output.
+3. Add an AI Review panel to Streamlit without changing existing
+   benchmark behavior.
+4. Compare rule-based and LLM results on identical scenarios.
+5. Add more scenarios and, when appropriate, carefully sanitized
+   real-format logs.
+6. Report limitations and evaluation methodology clearly.
+Responsible use
+Do not commit credentials, private logs, customer information, or other
+sensitive data. This project is for research, testing, and education. Do
+not use its verdicts as the sole basis for incident response or other
+high-impact security decisions.
